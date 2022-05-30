@@ -1,160 +1,102 @@
 # sobre: demo clase Epc
+---
+title: "Cómo se siente hacer lo que hicimos desde el código"
+subtitle: "Preparado para Giovani, Constanza, Jorge, Sabrina, Lauriel"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
 library(tidyverse)
-library(magrittr)
-library(rvest)
+library(tidyverse)
+library(nycflights13)
+library(purrr)
+```
 
-#-------------------------
-# limpieza datos globales
-#-------------------------
+Ver el nombre de las columnas
 
-# serie de tiempo
-url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv"
-url_m <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv"
+```{r nombres, exercise=TRUE}
+# ver el nombre de las columnas
+flights %>% colnames()
+```
 
+Ver la dimensión de la base de datos
+```{r estructura, exercise=TRUE}
 # descarga y limpieza
-df <- read_csv(url) %>% mutate(base = "confirmados")
-df_m <- read_csv(url_m) %>% mutate(base = "fallecidos")
+dim(flights)
+```
 
-df <- bind_rows(df, df_m) 
-rm(df_m, url, url_m)
+Ver la clase de las columnas
+```{r clase, exercise=TRUE}
+# descarga y limpieza
+map(flights, class)
+```
 
-df %<>% 
-  rename(pais_region = `Country/Region`) %>% 
-  dplyr::select(-matches("Lat|Long")) %>% 
-  mutate(pais_region = case_when(
-    str_detect(string = `Province/State`, "Hong Kong") ~ "Hong Kong SAR, China",
-    str_detect(string = `Province/State`, "Macau") ~ "Macao SAR, China",
-    T ~ pais_region
-  )) %>% 
-  dplyr::select(-`Province/State`) %>% 
-  gather(fecha, casos_acumulados, -pais_region, -base) 
+Ver la estructura de la base de datos
+```{r estructura1, exercise=TRUE}
+flights %>% summary()
+```
 
-df$fecha %<>% as.Date(., format = "%m/%d/%y")
+Filtrar por un atributo:  mes
+```{r filtro, exercise=TRUE}
+flights %>% 
+  dplyr::filter(month == 1)
+```
 
-# estandarización desde pacientes 0 e individualización de países en formato lista
-df %>% 
-  filter(casos_acumulados != 0) %>% 
-  group_by(pais_region, base, fecha) %>% 
-  summarise_all(sum) %>% 
-  ungroup() %>% 
-  group_split(pais_region, base) %>% 
-  map(., ~arrange(., fecha)) %>% 
-  map(., ~mutate(., dias = 1:nrow(.),
-                 total_semanas = nrow(.)/7)) %>% 
-  map(., ~mutate_if(., is.numeric, round, 0)) %>% 
-  bind_rows() %>% 
-  arrange(base, pais_region, fecha) -> df
+Filtrar por un mas de un atributo:  mes y dia
+```{r filtro1, exercise=TRUE}
+flights %>% 
+  dplyr::filter(
+    month == 1, 
+    day == c(1, 8)
+  )
+```
 
-# añadir variable de número de semanas: extensión de un año 
-tibble(
-  semana = rep((1:200), 7)
-) %>% 
-  arrange(semana) %>% 
-  mutate(dias = 1:nrow(.)) -> temp
+Ordenar una columna
+```{r arrange, exercise=TRUE}
+flights %>% 
+  dplyr::arrange(desc(dep_delay))
+```
 
-df %<>% merge(., temp, all.x = T)
-rm(temp)
+Ver distribución de atrasos en partida
+```{r dist, exercise=TRUE}
+flights %>% 
+  ggplot(aes(dep_delay)) +
+  geom_density()
+```
 
-# descarga de población por país: fuente Banco Mundial
-poblacion <- read_csv("https://rafalopezv.io/static/epc_datos/API_SP.POP.TOTL_DS2_en_csv_v2_1120881.csv", skip = 3)
-poblacion %<>% 
-  dplyr::select(pais_region = `Country Name`, poblacion = `2018`) 
+Ver distribución de atrasos en partida por mes
+```{r dist1, exercise=TRUE}
+flights %>% 
+  ggplot(aes(dep_delay)) +
+  geom_density() +
+  facet_wrap(~month)
+```
 
-# compatibilidad d datos población con base JHU
-(df$pais_region %>% unique)[!(df$pais_region %>% unique) %in%  (poblacion$pais_region %>% unique)]
-
-poblacion$pais_region %<>% gsub("Bahamas\\, The", "Bahamas", .)
-poblacion$pais_region %<>% gsub("Brunei Darussalam", "Brunei", .)
-poblacion$pais_region %<>% gsub("Egypt\\, Arab Rep\\.", "Egypt", .)
-poblacion$pais_region %<>% gsub("Gambia\\, The", "Gambia", .)
-poblacion$pais_region %<>% gsub("Iran\\, Islamic Rep\\.", "Iran", .)
-poblacion$pais_region %<>% gsub("Korea\\, Rep\\.", "Korea, South", .)
-poblacion$pais_region %<>% gsub("Kyrgyz Republic", "Kyrgyzstan", .)
-poblacion$pais_region %<>% gsub("Russian Federation", "Russia", .)
-poblacion$pais_region %<>% gsub("St\\. Lucia", "Saint Lucia", .)
-poblacion$pais_region %<>% gsub("St\\. Vincent and the Grenadines", "Saint Vincent and the Grenadines", .)
-poblacion$pais_region %<>% gsub("Slovak Republic", "Slovakia", .)
-poblacion$pais_region %<>% gsub("United States", "US", .)
-poblacion$pais_region %<>% gsub("Venezuela\\, RB", "Venezuela", .)
-poblacion$pais_region %<>% gsub("Syrian Arab Republic", "Syria", .)
-poblacion$pais_region %<>% gsub("Lao PDR", "Laos", .)
-poblacion$pais_region %<>% gsub("St. Kitts and Nevis", "Saint Kitts and Nevis", .)
-poblacion$pais_region %<>% gsub("Yemen\\, Rep\\.", "Yemen", .)
-poblacion$pais_region %<>% gsub("Myanmar", "Burma", .)
-poblacion$pais_region %<>% gsub("Czech Republic", "Czechia", .)
-poblacion$pais_region %<>% gsub("Congo\\, Dem\\. Rep\\.", "Congo (Kinshasa)", .)
-poblacion$pais_region %<>% gsub("Congo\\, Rep\\.", "Congo (Brazzaville)", .)
+Computar promedio y desviación estandar de atrasos en llegadas por mes
+```{r grupo, exercise=TRUE}
+flights %>% 
+  group_by(month) %>% 
+  summarise(
+    promedio = mean(arr_delay, na.rm = T),
+    desviación = sd(arr_delay, na.rm = T)
+  )
+```
 
 
-# Población de Taiwán no está reportada en China: https://databank.worldbank.org/reports.aspx?source=2&type=metadata&series=SP.POP.TOTL
+Graficar: atrasos en llegadas con tiempo de vuelo
+```{r grupo1, exercise=TRUE}
+flights %>% 
+  ggplot(aes(air_time, arr_delay)) +
+  geom_point()
+```
 
-# filtro la base de poblacion respecto a la data de JHU
-poblacion %>%  
-  filter(pais_region %in% (df %>% pull(pais_region) %>% unique)) %>% 
-  dplyr::select(pais_region, poblacion) -> poblacion
-
-df %<>% 
-  merge(., poblacion, all.x = T) %>% 
-  arrange(base, pais_region, fecha) 
-
-# completar poblaciones manualmente
-df %>% 
-  filter(is.na(poblacion)) %>% 
-  pull(pais_region) %>% 
-  unique
-
-
-df[df$pais_region == "Eritrea", "poblacion"] <- 6081196 # fuente cia.gov, año 2020
-df[df$pais_region == "Taiwan*", "poblacion"] <- 23603049 # fuente cia.gov, año 2020
-df[df$pais_region == "Holy See", "poblacion"] <- 1000 # fuente cia.gov, año 2019
-df[df$pais_region == "Western Sahara", "poblacion"] <- 652271 # fuente cia.gov, año 2020
-
-
-(df$pais_region %>% unique)[!(df$pais_region %>% unique) %in%  (poblacion$pais_region %>% unique)]
-rm(poblacion)
-
-# quitar a: Diamond Princess y MS Zaandam
-df %<>%  
-  filter(!is.na(poblacion))
-
-# dividir entre países/semanas
-df %>% 
-  group_split(base, pais_region) %>% 
-  map(., ~arrange(., fecha)) %>% 
-  map(., ~mutate(., incidencia = lag(casos_acumulados),
-                 incidencia = casos_acumulados - incidencia,
-                 incidencia = abs(incidencia))) %>%
-  bind_rows() %>% 
-  filter(!is.na(incidencia)) -> df_mundo
-
-# semanas de pandemia
-df  %>%
-  select(fecha) %>% 
-  unique %>% 
-  arrange(fecha) -> fechas
-
-# numero de semanas
-fechas %>% 
-  mutate(
-    semanas_pandemia = rep(1:122, 7) %>% sort()
-  ) %>% 
-  left_join(df_mundo, .) -> df_mundo
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Graficar: atrasos en llegadas con tiempo de vuelo (mas de 600 minutos en aire)
+```{r grupo2, exercise=TRUE}
+flights %>% 
+  filter(arr_delay >= 600) %>% 
+  ggplot(aes(air_time, arr_delay)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
